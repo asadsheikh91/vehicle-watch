@@ -523,9 +523,19 @@ class AnomalyService:
             if iso_score >= settings.anomaly_score_low:
                 continue  # not anomalous
 
-            # Deduplication: skip if within cooldown window
-            if cooldown_until and record.recorded_at <= cooldown_until:
-                continue
+            # Deduplication: skip if within cooldown window.
+            # Normalise both sides to tz-aware UTC before comparison —
+            # PostgreSQL returns tz-aware datetimes but SQLite (used in CI)
+            # returns naive ones, causing TypeError on mixed comparison.
+            if cooldown_until:
+                recorded_at = record.recorded_at
+                if recorded_at.tzinfo is None:
+                    recorded_at = recorded_at.replace(tzinfo=timezone.utc)
+                cmp_cooldown = cooldown_until
+                if cmp_cooldown.tzinfo is None:
+                    cmp_cooldown = cmp_cooldown.replace(tzinfo=timezone.utc)
+                if recorded_at <= cmp_cooldown:
+                    continue
 
             severity = _score_to_severity(float(iso_score))
 
